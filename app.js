@@ -5,13 +5,16 @@ const pLimit = require('p-limit').default;
 const readline = require('readline');
 
 // --- НАСТРОЙКИ ---
+// <<-- ИЗМЕНЕНИЕ: Впишите сюда нужный префикс. Например, 'CN'. 
+// Если префикс не нужен, оставьте пустым: ''
+const PREFIX = 'aidsupporter20'; //чем длиннее код тем меньше ставить батч сайз
+
 const BASE_API_URL = 'https://nhiymxlnmxrvcefwpdbg.supabase.co/rest/v1/community_passwords';
 const CODE_PARAMETER_NAME = 'password';
 const CODES_FILE_NAME = 'codesGenerated.txt';
 const RESULTS_FILE_NAME = 'result.txt';
-const BATCH_SIZE = 1250;
-// ВАЖНО: 200 - ЭКСТРЕМАЛЬНОЕ ЗНАЧЕНИЕ. Начните с 30-50.
-const CONCURRENCY_LIMIT = 100; 
+const BATCH_SIZE = 550;
+const CONCURRENCY_LIMIT = 500; 
 // Когда очередь ожидания превысит это значение, чтение файла приостановится
 const HIGH_WATER_MARK = CONCURRENCY_LIMIT * 2; 
 
@@ -58,6 +61,9 @@ const limit = pLimit(CONCURRENCY_LIMIT);
 
 async function main() {
     console.log("Запуск скрипта с механизмом обратного давления (backpressure)...");
+    if (PREFIX) {
+        console.log(`Используется префикс для всех кодов: "${PREFIX}-"`);
+    }
 
     const codesFilePath = path.join(__dirname, CODES_FILE_NAME);
     if (!fs.existsSync(codesFilePath)) {
@@ -81,19 +87,23 @@ async function main() {
     await new Promise((resolve, reject) => {
         rl.on('line', (line) => {
             stats.linesRead++;
-            const code = line.trim();
-            if (code) batch.push(code);
+            const rawCode = line.trim();
+
+            // <<-- ИЗМЕНЕНИЕ: Формируем итоговый код с префиксом
+            if (rawCode) {
+                // Если константа PREFIX задана, добавляем ее и дефис.
+                // Если PREFIX пустой, используется только сам код.
+                const finalCode = PREFIX ? `${PREFIX}-${rawCode}` : rawCode;
+                batch.push(finalCode);
+            }
             
             if (batch.length >= BATCH_SIZE) {
                 const currentBatch = batch;
                 
-                // Ставим задачу в очередь и СРАЗУ ЖЕ привязываем к ней обработчик
                 limit(async () => {
                     const result = await checkCodeBatch(currentBatch, batchNum);
                     processAndLogResult(result, resultsFilePath, stats);
                 }).then(() => {
-                    // Эта часть выполнится, когда задача ЗАВЕРШИТСЯ
-                    // Если поток был на паузе и в очереди стало меньше задач, возобновляем чтение
                     if (isPaused && limit.pendingCount < CONCURRENCY_LIMIT) {
                         isPaused = false;
                         rl.resume();
@@ -103,7 +113,6 @@ async function main() {
                 batch = []; 
                 batchNum++;
 
-                // Если очередь ожидания слишком большая, СТАВИМ НА ПАУЗУ чтение файла
                 if (!isPaused && limit.pendingCount > HIGH_WATER_MARK) {
                     isPaused = true;
                     rl.pause();

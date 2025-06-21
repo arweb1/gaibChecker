@@ -1,28 +1,14 @@
-// Подключаем встроенный модуль 'fs' для работы с файловой системой
+// Подключаем встроенные модули
 const fs = require('fs');
-// Подключаем встроенный модуль 'path' для корректной работы с путями к файлам
 const path = require('path');
 
 // --- НАСТРОЙКИ ---
-// Задайте ваше слово-префикс здесь
-const prefix = 'CN';
-
-// Укажите, сколько кодов нужно сгенерировать
-const numberOfCodes = 10000;
-
-// Длина случайной части кода
-const randomPartLength = 6;
-
-// Название файла для сохранения результата
+// Убрали префикс, остались только необходимые настройки
+const numberOfCodes = 100000000;
+const codeLength = 6;
 const outputFileName = 'codesGenerated.txt';
 // --- КОНЕЦ НАСТРОЕК ---
 
-
-/**
- * Генерирует случайную строку заданной длины.
- * @param {number} length - Длина генерируемой строки.
- * @returns {string} - Случайная строка.
- */
 function generateRandomString(length) {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let result = '';
@@ -33,41 +19,65 @@ function generateRandomString(length) {
     return result;
 }
 
-/**
- * Основная функция для генерации и сохранения кодов.
- */
 function main() {
-    console.log('Начинаю генерацию кодов...');
+    console.log(`Начинаю генерацию ${numberOfCodes.toLocaleString('ru-RU')} кодов...`);
+    const startTime = Date.now();
+    const outputPath = path.join(__dirname, outputFileName);
+    const writeStream = fs.createWriteStream(outputPath, { encoding: 'utf8' });
 
-    try {
-        const codes = []; // Массив для хранения всех сгенерированных кодов
+    let i = 0; // Выносим счетчик за пределы функции
 
-        for (let i = 0; i < numberOfCodes; i++) {
-            // Генерируем случайную часть
-            const randomPart = generateRandomString(randomPartLength);
-            // Собираем полный код в нужном формате
-            const fullCode = `${prefix}-${randomPart}`;
-            // Добавляем готовый код в массив
-            codes.push(fullCode);
+    // Создаем функцию, которая будет заниматься записью
+    function write() {
+        let canWrite = true;
+        // Запускаем цикл, который работает, пока i не достигнет нужного числа
+        // и пока поток готов принимать данные (canWrite === true)
+        while (i < numberOfCodes && canWrite) {
+            // --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
+            // Генерируем только случайную часть и добавляем перенос строки
+            const codeLine = `${generateRandomString(codeLength)}\n`;
+
+            i++;
+
+            // Обновляем индикатор прогресса
+            if (i % 100000 === 0) {
+                const percent = ((i / numberOfCodes) * 100).toFixed(2);
+                process.stdout.write(`\rПрогресс: ${percent}%... Сгенерировано ${i.toLocaleString('ru-RU')} кодов.`);
+            }
+            
+            // Если это последняя порция данных, используем end() вместо write()
+            if (i === numberOfCodes) {
+                writeStream.end(codeLine); // Записываем последнюю строку и закрываем поток
+            } else {
+                // write() вернет false, если внутренний буфер переполнен
+                canWrite = writeStream.write(codeLine);
+            }
         }
 
-        // Превращаем массив кодов в одну большую строку, где каждый код на новой строке
-        const fileContent = codes.join('\n');
-
-        // Определяем полный путь к файлу, чтобы он сохранился в той же папке, где лежит скрипт
-        const outputPath = path.join(__dirname, outputFileName);
-
-        // Записываем все коды в файл. Если файл уже существует, он будет перезаписан.
-        fs.writeFileSync(outputPath, fileContent);
-
-        console.log(`\x1b[32m%s\x1b[0m`, `Успешно! Сгенерировано ${numberOfCodes} кодов.`);
-        console.log(`Результат сохранен в файле: ${outputPath}`);
-
-    } catch (error) {
-        console.error('\x1b[31m%s\x1b[0m', 'Произошла ошибка во время выполнения скрипта:');
-        console.error(error);
+        // Если цикл остановился из-за того, что буфер переполнен (canWrite === false),
+        // мы ждем сигнала 'drain', чтобы продолжить.
+        if (i < numberOfCodes) {
+            writeStream.once('drain', write);
+        }
     }
+    
+    // Запускаем процесс в первый раз
+    write();
+
+    // Обработчик события 'finish' - сработает, когда поток будет полностью закрыт
+    writeStream.on('finish', () => {
+        const endTime = Date.now();
+        const duration = ((endTime - startTime) / 1000).toFixed(2);
+        console.log(`\n\x1b[32m%s\x1b[0m`, `Успешно! Все коды сгенерированы.`);
+        console.log(`Результат сохранен в файле: ${outputPath}`);
+        console.log(`Время выполнения: ${duration} сек.`);
+    });
+    
+    // Обработчик ошибок
+    writeStream.on('error', (error) => {
+        console.error('\x1b[31m%s\x1b[0m', '\nПроизошла ошибка при записи в файл:');
+        console.error(error);
+    });
 }
 
-// Запускаем основную функцию
 main();

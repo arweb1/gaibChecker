@@ -13,7 +13,6 @@ const RESULTS_FILE_NAME = 'result.txt';
 const BATCH_SIZE = 1250;
 const CONCURRENCY_LIMIT = 100;
 const HIGH_WATER_MARK = CONCURRENCY_LIMIT * 2;
-// --- ИЗМЕНЕНИЕ: Новая настройка для интервала прогресса ---
 const PROGRESS_INTERVAL_MS = 10000; // 10 секунд
 
 async function checkCodeBatch(batch, batchNum) {
@@ -53,18 +52,7 @@ function processAndLogResult(result, writeStream, stats) {
     }
 }
 
-// --- ИЗМЕНЕНИЕ: Новая функция для подсчета строк в файле ---
-async function countLines(filePath) {
-    return new Promise((resolve, reject) => {
-        let count = 0;
-        const stream = fs.createReadStream(filePath);
-        const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-        rl.on('line', () => count++);
-        rl.on('close', () => resolve(count));
-        rl.on('error', reject);
-    });
-}
-
+// --- ИЗМЕНЕНИЕ: Функция countLines удалена ---
 
 const limit = pLimit(CONCURRENCY_LIMIT);
 
@@ -80,10 +68,9 @@ async function main() {
         return;
     }
     
-    // --- ИЗМЕНЕНИЕ: Подсчитываем строки для отображения прогресса ---
-    console.log('Подсчет общего количества кодов в файле...');
-    const totalLines = await countLines(codesFilePath);
-    console.log(`Найдено всего кодов для проверки: ${totalLines}`);
+    // --- ИЗМЕНЕНИЕ: Общее количество кодов установлено как константа ---
+    const totalLines = 56800000000;
+    console.log(`Общее количество кодов для проверки установлено: ${totalLines.toLocaleString('ru-RU')}`);
 
     const resultsFilePath = path.join(__dirname, RESULTS_FILE_NAME);
     const resultsStream = fs.createWriteStream(resultsFilePath, { flags: 'a' });
@@ -101,11 +88,11 @@ async function main() {
     let isPaused = false;
     let progressInterval;
 
-    // --- ИЗМЕНЕНИЕ: Запускаем периодический вывод прогресса ---
     progressInterval = setInterval(() => {
-        const percentage = totalLines > 0 ? ((stats.linesRead / totalLines) * 100).toFixed(2) : "N/A";
+        // --- Процент теперь считается от константы totalLines ---
+        const percentage = totalLines > 0 ? ((stats.linesRead / totalLines) * 100).toFixed(8) : "N/A"; // Увеличена точность для больших чисел
         console.log(
-            `\n[ПРОГРЕСС | ${new Date().toLocaleTimeString('uk-UA')}] Обработано: ${stats.linesRead}/${totalLines} (${percentage}%) | Найдено: ${stats.totalValidCount} | Запросы (Активно/В очереди): ${limit.activeCount}/${limit.pendingCount}\n`
+            `\n[ПРОГРЕСС | ${new Date().toLocaleTimeString('uk-UA')}] Обработано: ${stats.linesRead.toLocaleString('ru-RU')}/${totalLines.toLocaleString('ru-RU')} (${percentage}%) | Найдено: ${stats.totalValidCount} | Запросы (Активно/В очереди): ${limit.activeCount}/${limit.pendingCount}\n`
         );
     }, PROGRESS_INTERVAL_MS);
 
@@ -149,26 +136,24 @@ async function main() {
                     processAndLogResult(result, resultsStream, stats);
                 });
             }
-            console.log(`Чтение файла завершено. Всего прочитано строк: ${stats.linesRead}. Ожидаем завершения всех сетевых запросов...`);
+            console.log(`Чтение файла завершено. Всего прочитано строк: ${stats.linesRead.toLocaleString('ru-RU')}. Ожидаем завершения всех сетевых запросов...`);
             resolve();
         });
 
         rl.on('error', (err) => {
-            // --- ИЗМЕНЕНИЕ: Убедимся, что таймер будет остановлен при ошибке ---
             clearInterval(progressInterval);
             reject(err);
         });
     });
 
     await limit.onIdle();
-
-    // --- ИЗМЕНЕНИЕ: Останавливаем таймер прогресса перед выводом итогов ---
+    
     clearInterval(progressInterval);
 
     resultsStream.end();
 
     console.log('\n\n--- Проверка завершена ---');
-    console.log(`Обработка ${stats.linesRead} строк завершена.`);
+    console.log(`Обработка ${stats.linesRead.toLocaleString('ru-RU')} строк завершена.`);
     console.log(`Успешных пакетов: ${stats.successfulBatches}, Пакетов с ошибками: ${stats.failedBatches}`);
     console.log(`Найдено ВСЕГО валидных кодов: ${stats.totalValidCount}`);
     console.log(`\nВсе подробные результаты сохранены в файле '${RESULTS_FILE_NAME}'.`);

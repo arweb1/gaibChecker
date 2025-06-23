@@ -4,16 +4,21 @@ const path = require('path');
 const pLimit = require('p-limit').default;
 const readline = require('readline');
 
-// --- НАСТРОЙКИ ---
-const PREFIX = 'CN';
+// --- ОСНОВНЫЕ НАСТРОЙКИ ---
+const PREFIX = 'Aethir';
 const BASE_API_URL = 'https://nhiymxlnmxrvcefwpdbg.supabase.co/rest/v1/community_passwords';
 const CODE_PARAMETER_NAME = 'password';
 const CODES_FILE_NAME = 'all_codes_go_parallel.txt';
 const RESULTS_FILE_NAME = 'result.txt';
-const BATCH_SIZE = 1250;
-const CONCURRENCY_LIMIT = 100;
+const BATCH_SIZE = 950;
+const CONCURRENCY_LIMIT = 120; // ИЗМЕНЕНО согласно запросу
 const HIGH_WATER_MARK = CONCURRENCY_LIMIT * 2;
 const PROGRESS_INTERVAL_MS = 10000; // 10 секунд
+
+// --- НОВАЯ НАСТРОЙКА ПЕРЕЗАПУСКА ---
+// Установите 1 для обычного запуска с самого начала.
+// Для перезапуска укажите номер пакета, с которого нужно продолжить.
+const START_FROM_BATCH = 925359; // <-- ИЗМЕНИТЬ ЗДЕСЬ ДЛЯ ПЕРЕЗАПУСКА
 
 async function checkCodeBatch(batch, batchNum) {
     const filterValue = `in.(${batch.join(',')})`;
@@ -52,12 +57,10 @@ function processAndLogResult(result, writeStream, stats) {
     }
 }
 
-// --- ИЗМЕНЕНИЕ: Функция countLines удалена ---
-
 const limit = pLimit(CONCURRENCY_LIMIT);
 
 async function main() {
-    console.log("Запуск скрипта с механизмом обратного давления (backpressure)...");
+    console.log("Запуск скрипта...");
     if (PREFIX) {
         console.log(`Используется префикс для всех кодов: "${PREFIX}-"`);
     }
@@ -68,29 +71,37 @@ async function main() {
         return;
     }
     
-    // --- ИЗМЕНЕНИЕ: Общее количество кодов установлено как константа ---
     const totalLines = 56800000000;
     console.log(`Общее количество кодов для проверки установлено: ${totalLines.toLocaleString('ru-RU')}`);
 
     const resultsFilePath = path.join(__dirname, RESULTS_FILE_NAME);
     const resultsStream = fs.createWriteStream(resultsFilePath, { flags: 'a' });
-    resultsStream.write(`--- Запуск потоковой проверки: ${new Date().toLocaleString('uk-UA')} ---\n`);
+    resultsStream.write(`--- Запуск/перезапуск проверки: ${new Date().toLocaleString('uk-UA')} ---\n`);
     
-    console.log(`Результаты будут записываться в файл: ${RESULTS_FILE_NAME}`);
     console.log(`Размер пакета: ${BATCH_SIZE}, Лимит одновременных запросов: ${CONCURRENCY_LIMIT}`);
-
-    const stats = { totalValidCount: 0, linesRead: 0, successfulBatches: 0, failedBatches: 0 };
+    
+    // --- ИЗМЕНЕНИЕ: Логика перезапуска ---
+    const linesToSkip = START_FROM_BATCH > 1 ? (START_FROM_BATCH - 1) * BATCH_SIZE : 0;
+    let batchNum = START_FROM_BATCH;
+    const stats = { totalValidCount: 0, linesRead: linesToSkip, successfulBatches: 0, failedBatches: 0 };
+    
     const fileStream = fs.createReadStream(codesFilePath);
     const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
 
     let batch = [];
-    let batchNum = 1;
     let isPaused = false;
     let progressInterval;
+    let lineCounterForSkip = 0;
+    let skippingPhaseDone = linesToSkip === 0;
 
+    if (linesToSkip > 0) {
+        console.log(`\n--- РЕЖИМ ПЕРЕЗАПУСКА АКТИВИРОВАН ---`);
+        console.log(`Начинаем с пакета №${START_FROM_BATCH.toLocaleString('ru-RU')}.`);
+        console.log(`Требуется пропустить ${linesToSkip.toLocaleString('ru-RU')} строк. Это может занять время...`);
+    }
+    
     progressInterval = setInterval(() => {
-        // --- Процент теперь считается от константы totalLines ---
-        const percentage = totalLines > 0 ? ((stats.linesRead / totalLines) * 100).toFixed(8) : "N/A"; // Увеличена точность для больших чисел
+        const percentage = totalLines > 0 ? ((stats.linesRead / totalLines) * 100).toFixed(8) : "N/A";
         console.log(
             `\n[ПРОГРЕСС | ${new Date().toLocaleTimeString('uk-UA')}] Обработано: ${stats.linesRead.toLocaleString('ru-RU')}/${totalLines.toLocaleString('ru-RU')} (${percentage}%) | Найдено: ${stats.totalValidCount} | Запросы (Активно/В очереди): ${limit.activeCount}/${limit.pendingCount}\n`
         );
@@ -98,6 +109,22 @@ async function main() {
 
     await new Promise((resolve, reject) => {
         rl.on('line', (line) => {
+            // --- ИЗМЕНЕНИЕ: Фаза пропуска строк ---
+            if (lineCounterForSkip < linesToSkip) {
+                lineCounterForSkip++;
+                if (lineCounterForSkip % 1000000 === 0) { // Логируем прогресс пропуска
+                    console.log(`[Пропуск...] Прочитано ${lineCounterForSkip.toLocaleString('ru-RU')} из ${linesToSkip.toLocaleString('ru-RU')} строк...`);
+                }
+                return;
+            }
+            
+            if (!skippingPhaseDone) {
+                console.log(`\n--- ПРОПУСК СТРОК ЗАВЕРШЕН ---`);
+                console.log(`Начинаем обработку с пакета №${batchNum.toLocaleString('ru-RU')}.\n`);
+                skippingPhaseDone = true;
+            }
+            // --- Конец фазы пропуска ---
+
             stats.linesRead++;
             const rawCode = line.trim();
 

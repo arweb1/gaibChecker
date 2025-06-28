@@ -5,22 +5,22 @@ const pLimit = require('p-limit').default;
 const readline = require('readline');
 
 // --- ОСНОВНЫЕ НАСТРОЙКИ ---
-const PREFIX = 'Aethir';
+const PREFIX = 'KR';
 const BASE_API_URL = 'https://nhiymxlnmxrvcefwpdbg.supabase.co/rest/v1/community_passwords';
 const CODE_PARAMETER_NAME = 'password';
 const CODES_FILE_NAME = 'all_codes_go_parallel.txt';
 const RESULTS_FILE_NAME = 'result.txt';
-const BATCH_SIZE = 950;
-const CONCURRENCY_LIMIT = 120;
+const BATCH_SIZE = 1250;
+const CONCURRENCY_LIMIT = 100;
 const HIGH_WATER_MARK = CONCURRENCY_LIMIT * 2;
 const PROGRESS_INTERVAL_MS = 10000; // 10 секунд
 
 // --- НАСТРОЙКА ПЕРЕЗАПУСКА ---
-const START_FROM_BATCH =  1502945; // Установите 1 для обычного запуска. Для перезапуска укажите номер пакета.
+const START_FROM_BATCH =  10873653; // Установите 1 для обычного запуска. Для перезапуска укажите номер пакета.
 
 // --- НОВЫЕ НАСТРОЙКИ ОТКАЗОУСТОЙЧИВОСТИ ---
 const RETRY_ATTEMPTS_BEFORE_SLEEP = 2; // Кол-во последовательных ошибок перед уходом в спящий режим
-const SLEEP_ON_FAIL_MINUTES = 60;     // Длительность спящего режима в минутах
+const SLEEP_ON_FAIL_MINUTES = 7;     // Длительность спящего режима в минутах
 const SHORT_RETRY_DELAY_MS = 5000;    // Короткая задержка перед обычной повторной попыткой (в мс)
 
 // --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ СОСТОЯНИЯ ---
